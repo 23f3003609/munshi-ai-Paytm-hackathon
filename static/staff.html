@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="/static/auth.js" data-role="staff"></script>
+<title>Munshi Soundbox</title>
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<style>
+  .grille { background-image: radial-gradient(circle, #334155 1.6px, transparent 1.7px); background-size: 10px 10px; }
+  .pulse { animation: pulse 1s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .35; } }
+</style>
+</head>
+<body class="bg-slate-100 min-h-screen flex flex-col items-center py-8 font-sans">
+
+  <p class="text-slate-500 text-sm mb-3">Counter staff view &middot; Ramesh Kirana Store</p>
+
+  <!-- the device -->
+  <div class="w-80 bg-slate-900 rounded-[2.5rem] p-6 shadow-2xl">
+    <div class="flex items-center justify-between mb-4">
+      <span class="text-sky-400 font-bold tracking-wide">paytm <span class="text-white font-normal">soundbox</span></span>
+      <span id="conn" class="w-3 h-3 rounded-full bg-slate-600" title="connection"></span>
+    </div>
+
+    <div id="screen" class="rounded-2xl bg-slate-800 p-4 min-h-[180px] transition-colors">
+      <div id="lamp" class="w-full h-2 rounded-full bg-slate-600 mb-3"></div>
+      <p id="status" class="text-slate-300 text-sm">Waiting for payments…</p>
+      <p id="amount" class="text-white text-4xl font-bold my-2">—</p>
+      <ul id="reasons" class="text-sm space-y-1"></ul>
+    </div>
+
+    <div id="actions" class="grid grid-cols-2 gap-3 mt-4 hidden">
+      <button onclick="act('verified')" class="bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl py-3 font-semibold">Verified</button>
+      <button onclick="act('held')" class="bg-red-500 hover:bg-red-600 text-white rounded-xl py-3 font-semibold">Hold</button>
+    </div>
+    <p id="actionDone" class="text-center text-slate-300 text-sm mt-3"></p>
+
+    <div class="grille h-20 rounded-2xl mt-5"></div>
+
+  </div>
+
+  <button id="powerBtn" onclick="powerOn()" class="mt-6 bg-sky-500 hover:bg-sky-600 text-white px-6 py-3 rounded-full font-semibold shadow">
+    Turn on Soundbox
+  </button>
+  <p class="text-slate-400 text-xs mt-2">Click once so the browser allows sound</p>
+
+  <div class="w-80 mt-6">
+    <p class="text-slate-500 text-sm mb-2">Recent payments</p>
+    <ul id="history" class="bg-white rounded-xl divide-y text-sm"></ul>
+  </div>
+
+<script>
+const COLORS = {
+  safe:   { lamp: "bg-emerald-400", screen: "bg-slate-800", label: "Payment received", text: "text-emerald-300" },
+  verify: { lamp: "bg-amber-400 pulse", screen: "bg-amber-900", label: "Please verify", text: "text-amber-200" },
+  hold:   { lamp: "bg-red-500 pulse", screen: "bg-red-900", label: "HIGH RISK — do not hand over", text: "text-red-200" },
+};
+let poweredOn = false, currentId = null, audioQueue = Promise.resolve();
+const rupee = n => "₹" + Number(n).toLocaleString("en-IN");
+
+function powerOn() {
+  poweredOn = true;
+  document.getElementById("powerBtn").textContent = "Soundbox is on";
+  document.getElementById("powerBtn").disabled = true;
+  speak("Munshi soundbox is ready.");
+}
+
+// ---- voice: Sarvam via backend, browser voice as fallback ----
+function speak(text) {
+  if (!poweredOn) return;
+  audioQueue = audioQueue.then(async () => {
+    try {
+      const r = await fetch("/api/tts", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, lang: "en-IN" }) });
+      const d = await r.json();
+      if (d.audio) {
+        const a = new Audio("data:audio/wav;base64," + d.audio);
+        await a.play();
+        await new Promise(res => a.onended = res);
+        return;
+      }
+    } catch (e) { console.warn("TTS failed, using browser voice", e); }
+    await new Promise(res => {
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = "en-IN"; u.onend = res; speechSynthesis.speak(u);
+    });
+  });
+}
+
+// ---- show a payment on the screen ----
+function show(p) {
+  const c = COLORS[p.level] || COLORS.safe;
+  currentId = p.id;
+  document.getElementById("lamp").className = "w-full h-2 rounded-full mb-3 " + c.lamp;
+  document.getElementById("screen").className = "rounded-2xl p-4 min-h-[180px] transition-colors " + c.screen;
+  document.getElementById("status").textContent = c.label;
+  document.getElementById("status").className = "text-sm font-semibold " + c.text;
+  document.getElementById("amount").textContent = rupee(p.amount);
+  document.getElementById("reasons").innerHTML = (p.level === "safe" ? [] : p.reasons)
+    .map(r => `<li class="${c.text}">• ${r}</li>`).join("") +
+    (p.cashback ? `<li class="text-sky-300 font-semibold">• Offer applied: ₹${p.cashback.amount} cashback to customer (Paytm credits it, no cash needed)</li>` : "");
+  document.getElementById("actions").classList.toggle("hidden", p.level === "safe");
+  document.getElementById("actionDone").textContent = "";
+  document.getElementById("actionDone").className = "text-center text-slate-300 text-sm mt-3";
+  speak(p.speak);
+  loadHistory();
+}
+
+async function act(action) {
+  if (!currentId) return;
+  await fetch(`/api/payments/${currentId}/action`, { method: "POST",
+    headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
+  document.getElementById("actions").classList.add("hidden");
+  document.getElementById("actionDone").textContent = action === "verified" ? "Marked as verified" : "Payment on hold — owner notified";
+}
+
+async function loadHistory() {
+  const rows = await (await fetch("/api/payments/recent?limit=6")).json();
+  const dot = { safe: "bg-emerald-400", verify: "bg-amber-400", hold: "bg-red-500" };
+  document.getElementById("history").innerHTML = rows.map(r => `
+    <li class="flex items-center justify-between px-3 py-2">
+      <span class="flex items-center gap-2"><span class="w-2 h-2 rounded-full ${dot[r.risk_level] || "bg-slate-300"}"></span>${rupee(r.amount)}</span>
+      <span class="text-slate-400">${r.ts.slice(11, 16)}${r.staff_action ? " · " + r.staff_action : ""}</span>
+    </li>`).join("");
+}
+
+// ---- live connection with auto-reconnect ----
+function connect() {
+  const ws = MUNSHI.ws("staff");
+  const dot = document.getElementById("conn");
+  ws.onopen = () => dot.className = "w-3 h-3 rounded-full bg-emerald-400";
+  ws.onclose = () => { dot.className = "w-3 h-3 rounded-full bg-red-500"; setTimeout(connect, 2000); };
+  ws.onmessage = e => {
+    const m = JSON.parse(e.data);
+    if (m.type === "payment") show(m);
+    if (m.type === "owner_decision") {
+      if (m.id === currentId) {
+        document.getElementById("actions").classList.add("hidden");
+        const el = document.getElementById("actionDone");
+        el.textContent = m.speak;
+        el.className = "text-center text-sm mt-3 font-semibold " + (m.action === "genuine" ? "text-emerald-300" : "text-red-300");
+      }
+      speak(m.speak);
+      loadHistory();
+    }
+  };
+}
+connect();
+loadHistory();
+</script>
+</body>
+</html>

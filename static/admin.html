@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Munshi AI · Demo admin</title>
+<script src="/static/auth.js" data-role="admin"></script>
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+</head>
+<body class="bg-slate-100 min-h-screen font-sans">
+<div class="max-w-3xl mx-auto p-6 space-y-5">
+  <div>
+    <p class="text-sky-500 text-sm font-semibold">Munshi AI</p>
+    <h1 class="text-2xl font-bold text-[#002E6E]">Demo admin</h1>
+    <p class="text-sm text-slate-500">In the real product this is Paytm's side: the data pipeline, the nightly batch job and model monitoring.</p>
+  </div>
+
+  <div class="grid sm:grid-cols-3 gap-3">
+    <a href="#" onclick="openAs('owner');return false;" class="bg-white rounded-2xl p-4 shadow-sm hover:shadow"><p class="font-semibold">Owner app ↗</p><p class="text-xs text-slate-500">Alerts, leaks, tax, customers</p></a>
+    <a href="#" onclick="openAs('staff');return false;" class="bg-white rounded-2xl p-4 shadow-sm hover:shadow"><p class="font-semibold">Soundbox ↗</p><p class="text-xs text-slate-500">Counter staff view</p></a>
+    <a href="#" onclick="openAs('customer');return false;" class="bg-white rounded-2xl p-4 shadow-sm hover:shadow"><p class="font-semibold">Customer ↗</p><p class="text-xs text-slate-500">Pay the shop, offers</p></a>
+  </div>
+
+  <div class="bg-white rounded-2xl p-5 shadow-sm space-y-3">
+    <p class="font-semibold text-slate-800">Controls</p>
+    <div class="flex flex-wrap gap-2">
+      <button id="genBtn" onclick="generate()" class="bg-slate-800 text-white rounded-xl px-4 py-2 text-sm">Reset demo data</button>
+      <button id="nightBtn" onclick="nightly()" class="bg-sky-500 text-white rounded-xl px-4 py-2 text-sm">Run nightly check</button>
+    </div>
+    <p id="msg" class="text-sm text-slate-500"></p>
+  </div>
+
+  <div class="bg-white rounded-2xl p-5 shadow-sm">
+    <p class="font-semibold text-slate-800 mb-3">Data</p>
+    <div id="data" class="grid sm:grid-cols-4 gap-3 text-sm"></div>
+  </div>
+
+  <div class="bg-white rounded-2xl p-5 shadow-sm">
+    <div class="flex items-center justify-between mb-3">
+      <p class="font-semibold text-slate-800">How accurate is Munshi? <span class="text-xs text-slate-400 font-normal">checked against the hidden planted events</span></p>
+      <span id="lastRun" class="text-xs text-slate-400"></span>
+    </div>
+    <div class="overflow-x-auto"><table class="w-full text-sm">
+      <thead><tr class="text-left text-slate-500 border-b"><th class="py-2">Module</th><th>What was planted</th><th>What Munshi found</th></tr></thead>
+      <tbody id="acc"></tbody>
+    </table></div>
+  </div>
+</div>
+
+<script>
+// window.open (without noopener) copies this tab's login into the new tab
+function openAs(page) { window.open("/static/" + page + ".html"); }
+const rupee = n => "₹" + Math.round(Number(n || 0)).toLocaleString("en-IN");
+const api = async (url, opts = {}) => {
+  const r = await fetch(url, { headers: { "Content-Type": "application/json" }, ...opts });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.detail || r.status);
+  return d;
+};
+
+async function load() {
+  const s = await api("/api/admin/summary");
+  const card = (label, value, sub = "") => `<div class="bg-slate-50 rounded-xl p-3"><p class="text-xs text-slate-500">${label}</p>
+    <p class="font-bold text-slate-800">${value}</p><p class="text-[11px] text-slate-400">${sub}</p></div>`;
+  document.getElementById("data").innerHTML =
+    card("Payments", (s.n || 0).toLocaleString("en-IN"), `${(s.first || "").slice(0, 10)} → ${(s.last || "").slice(0, 10)}`) +
+    card("Raw UPI received", rupee(s.total), "what a tax officer sees") +
+    card("Real shop sales", rupee(s.sales), `personal: ${rupee(s.personal)}`) +
+    card("Live demo", `${s.live.n || 0} payments`, `${s.live.flagged || 0} flagged · ${s.offers.sent || 0} offers, ${s.offers.redeemed || 0} came back` +
+          (s.offers.redeemed ? ` · ${rupee(s.offers.revenue)} won back for ${rupee(s.offers.cost)} cashback` : ""));
+  document.getElementById("lastRun").textContent = s.last_nightly ? "Last nightly check: " + s.last_nightly.replace("T", " ").slice(0, 16) : "";
+  const a = s.accuracy, p = s.planted || {};
+  if (!a) { document.getElementById("acc").innerHTML = `<tr><td colspan="3" class="py-3 text-slate-400">Run the nightly check to measure accuracy.</td></tr>`; return; }
+  const row = (m, planted, found, ok) => `<tr class="border-b last:border-0"><td class="py-2 font-semibold">${m}</td><td>${planted}</td>
+    <td class="${ok ? "text-emerald-700" : "text-amber-700"}">${found}</td></tr>`;
+  document.getElementById("acc").innerHTML =
+    row("Suraksha", `${(p.suraksha_history || []).length} fraud payments`, `${a.suraksha.fraud_caught} caught · ${a.suraksha.false_alarms} false alarms`, true) +
+    row("Galla Check", `QR swap from ${a.galla.planted_start}, ${rupee(a.galla.planted_loss)} diverted`,
+        a.galla.leak_found ? `Found from ${a.galla.detected_start}, estimated ${rupee(a.galla.estimated_loss)}` : "Not found", a.galla.leak_found) +
+    row("Tax Kavach", `${rupee(p.tax_personal_total)} personal money mixed in`, `${a.tax.classification_accuracy_pct}% correct · ${a.tax.personal_transfers_caught} personal transfers separated`, true) +
+    row("Wapsi", `${a.wapsi.planted} regulars stopped coming`, `${a.wapsi.correct}/${a.wapsi.planted} found · ${a.wapsi.false_alarms} false alarms · ${a.wapsi.explained_by_qr_leak} explained by the QR leak`, a.wapsi.false_alarms === 0);
+}
+
+async function generate() {
+  if (!confirm("Reset all demo data? Live payments, offers and alerts will be cleared.")) return;
+  const b = document.getElementById("genBtn"), m = document.getElementById("msg");
+  b.disabled = true; m.textContent = "Generating 7 months of payments… (about 15 seconds)";
+  try { await api("/api/admin/generate", { method: "POST" }); await api("/api/admin/nightly", { method: "POST" });
+        m.textContent = "Fresh data ready and nightly check done."; }
+  catch (e) { m.textContent = "Failed: " + e.message; }
+  b.disabled = false; load();
+}
+
+async function nightly() {
+  const b = document.getElementById("nightBtn"), m = document.getElementById("msg");
+  b.disabled = true; m.textContent = "Running nightly check…";
+  try { const r = await api("/api/admin/nightly", { method: "POST" }); m.textContent = `Done: ${r.alerts_created} insights created.`; }
+  catch (e) { m.textContent = "Failed: " + e.message; }
+  b.disabled = false; load();
+}
+load();
+</script>
+</body>
+</html>

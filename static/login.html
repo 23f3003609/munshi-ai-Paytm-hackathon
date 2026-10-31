@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Munshi AI · Log in</title>
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+</head>
+<body class="bg-slate-100 min-h-screen flex flex-col items-center justify-center p-6 font-sans">
+  <div class="w-full max-w-md">
+    <div class="text-center mb-6">
+      <p class="text-sky-500 font-bold tracking-wide">paytm</p>
+      <h1 class="text-3xl font-bold text-[#002E6E]">Munshi AI</h1>
+      <p class="text-slate-500 text-sm">The AI guardian for every Paytm merchant</p>
+    </div>
+
+    <div class="bg-white rounded-3xl shadow-xl p-6 space-y-4">
+      <p class="text-sm font-semibold text-slate-700">Who are you?</p>
+      <div id="roles" class="grid grid-cols-2 gap-3"></div>
+      <div>
+        <label class="text-xs text-slate-500">4-digit PIN</label>
+        <input id="pin" type="password" inputmode="numeric" maxlength="4"
+               class="w-full mt-1 border rounded-xl p-3 text-center text-2xl tracking-[0.5em]" placeholder="••••">
+        <p id="err" class="text-red-600 text-xs mt-1"></p>
+      </div>
+      <button onclick="login()" class="w-full bg-[#002E6E] hover:bg-[#00245a] text-white rounded-xl py-3 font-semibold">Log in</button>
+    </div>
+    <p class="text-center text-xs text-slate-400 mt-4">Demo PINs · Owner 1111 · Staff 2222 · Customer 3333 · Admin 9999</p>
+  </div>
+
+<script>
+const ROLES = [
+  { id: "owner", title: "Shop owner", desc: "Alerts, leaks, tax, customers", page: "owner.html" },
+  { id: "staff", title: "Counter staff", desc: "Soundbox only", page: "staff.html" },
+  { id: "customer", title: "Customer", desc: "Pay the shop, offers", page: "customer.html" },
+  { id: "admin", title: "Demo admin", desc: "Data, nightly check, accuracy", page: "admin.html" },
+];
+let chosen = null;
+document.getElementById("roles").innerHTML = ROLES.map(r => `
+  <button data-role="${r.id}" class="role text-left border-2 border-slate-200 rounded-2xl p-3 hover:border-sky-300">
+    <p class="font-semibold text-slate-800 text-sm">${r.title}</p>
+    <p class="text-[11px] text-slate-500">${r.desc}</p>
+  </button>`).join("");
+document.querySelectorAll(".role").forEach(b => b.onclick = () => {
+  chosen = b.dataset.role;
+  document.querySelectorAll(".role").forEach(x => x.className = "role text-left border-2 rounded-2xl p-3 " +
+    (x === b ? "border-sky-500 bg-sky-50" : "border-slate-200 hover:border-sky-300"));
+  document.getElementById("err").textContent = "";
+  document.getElementById("pin").focus();
+});
+document.getElementById("pin").addEventListener("keydown", e => { if (e.key === "Enter") login(); });
+document.getElementById("pin").addEventListener("input", () => document.getElementById("err").textContent = "");
+
+async function login() {
+  const err = document.getElementById("err");
+  const pin = document.getElementById("pin").value.trim();
+  if (!chosen) { err.textContent = "Choose who you are first"; return; }
+  if (!/^\d{4}$/.test(pin)) { err.textContent = "Enter your 4-digit PIN"; return; }
+  const r = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ role: chosen, pin }) });
+  if (!r.ok) { err.textContent = "Wrong PIN for this role"; return; }
+  const u = await r.json();
+  sessionStorage.setItem("munshi_token", u.token);
+  sessionStorage.setItem("munshi_role", u.role);
+  const next = new URLSearchParams(location.search).get("next");
+  const home = "/static/" + ROLES.find(x => x.id === u.role).page;
+  location.replace(next && (u.role === "admin" || next === home) ? next : home);
+}
+</script>
+</body>
+</html>

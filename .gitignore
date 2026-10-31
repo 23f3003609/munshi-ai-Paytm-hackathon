@@ -1,0 +1,5 @@
+venv/
+.env
+munshi.db*
+tts_cache/
+__pycache__/

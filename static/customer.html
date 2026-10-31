@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="/static/auth.js" data-role="customer"></script>
+<title>Customer · Pay shop</title>
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+</head>
+<body class="bg-slate-100 min-h-screen flex flex-col items-center py-8 font-sans">
+
+  <p class="text-slate-500 text-sm mb-3">Customer simulator (stands in for the customer's UPI app)</p>
+
+  <div class="w-80 bg-white rounded-3xl shadow-xl overflow-hidden">
+    <div class="bg-[#002E6E] text-white p-5">
+      <p class="text-sky-300 text-xs">Paying</p>
+      <p class="text-lg font-semibold">Ramesh Kirana Store</p>
+      <p class="text-sky-200 text-xs">rameshkirana@paytm</p>
+    </div>
+
+    <div class="p-5 space-y-4">
+      <div>
+        <label class="text-xs text-slate-500">Who is paying</label>
+        <select id="payer" class="w-full mt-1 border rounded-lg p-2 text-sm"></select>
+      </div>
+
+      <div>
+        <label class="text-xs text-slate-500">Amount (₹)</label>
+        <input id="amount" type="number" min="1" value="180" class="w-full mt-1 border rounded-lg p-2 text-2xl font-semibold">
+        <p id="err" class="text-red-600 text-xs mt-1"></p>
+      </div>
+
+      <div>
+        <label class="text-xs text-slate-500">How</label>
+        <div class="grid grid-cols-2 gap-2 mt-1">
+          <button id="m-P2M" onclick="setMode('P2M')" class="mode border rounded-lg py-2 text-sm">Scan shop QR</button>
+          <button id="m-P2P" onclick="setMode('P2P')" class="mode border rounded-lg py-2 text-sm">Send to number</button>
+        </div>
+      </div>
+
+      <div>
+        <label class="text-xs text-slate-500">Note (optional)</label>
+        <input id="note" class="w-full mt-1 border rounded-lg p-2 text-sm" placeholder="e.g. rent, groceries">
+      </div>
+
+
+      <button onclick="pay()" class="w-full bg-sky-500 hover:bg-sky-600 text-white rounded-xl py-3 font-semibold">Pay</button>
+      <p id="result" class="text-center text-sm"></p>
+    </div>
+  </div>
+
+  <div id="profile" class="w-80 mt-5 bg-white rounded-3xl shadow p-5 space-y-3 hidden">
+    <div class="flex items-center justify-between">
+      <p class="text-sm font-semibold text-slate-700">My offers from this shop</p>
+      <span id="custId" class="text-[11px] text-slate-400"></span>
+    </div>
+    <label class="flex items-center justify-between text-sm">
+      <span>Get offers from shops I visit</span>
+      <input id="optin" type="checkbox" onchange="setOptIn(this.checked)">
+    </label>
+    <ul id="inbox" class="space-y-2 text-sm"></ul>
+  </div>
+
+  <div class="w-80 mt-5">
+    <p class="text-slate-500 text-sm mb-2">Demo shortcuts</p>
+    <div class="grid grid-cols-1 gap-2">
+      <button onclick="preset('regular', 180)" class="bg-white rounded-xl py-2 text-sm shadow-sm">Regular customer · ₹180</button>
+      <button onclick="preset('newacct', 2400)" class="bg-white rounded-xl py-2 text-sm shadow-sm text-amber-700">Brand-new UPI account · ₹2,400</button>
+      <button onclick="preset('suspicious', 9000)" class="bg-white rounded-xl py-2 text-sm shadow-sm text-red-600">Mule account · ₹9,000</button>
+      <button onclick="preset('lost', 320)" class="bg-white rounded-xl py-2 text-sm shadow-sm text-sky-700">Lost regular comes back · ₹320</button>
+    </div>
+  </div>
+
+<script>
+let resultTimer = null;
+let mode = "P2M", data = { regulars: [], suspicious: [], lost: [], new_account: [] }, profile = null;
+const esc = s => String(s ?? "").replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+
+function setMode(m) {
+  mode = m;
+  document.querySelectorAll(".mode").forEach(b => b.className = "mode border rounded-lg py-2 text-sm");
+  document.getElementById("m-" + m).className = "mode border-2 border-sky-500 bg-sky-50 rounded-lg py-2 text-sm font-semibold";
+}
+
+async function loadPayers() {
+  data = await (await fetch("/api/sim/payers")).json();
+  const sel = document.getElementById("payer");
+  sel.innerHTML = `<option value="">New customer (first visit)</option>` +
+    `<optgroup label="Regular customers">` +
+    data.regulars.map(p => `<option value="${p.vpa}">${p.name} · ${p.vpa}</option>`).join("") + `</optgroup>` +
+    (data.lost.length ? `<optgroup label="Regulars who stopped coming (demo)">` +
+      data.lost.map(p => `<option value="${p.vpa}">${p.name} · ${p.customer_id}</option>`).join("") + `</optgroup>` : "") +
+    (data.new_account.length ? `<optgroup label="Brand-new UPI account (demo)">` +
+      data.new_account.map(p => `<option value="${p.vpa}">${p.name} · ${p.vpa}</option>`).join("") + `</optgroup>` : "") +
+    `<optgroup label="Suspicious (demo)">` +
+    data.suspicious.map(p => `<option value="${p.vpa}">${p.vpa}</option>`).join("") + `</optgroup>`;
+}
+
+function preset(kind, amount) {
+  const sel = document.getElementById("payer");
+  if (kind === "newacct" && data.new_account.length) sel.value = data.new_account[0].vpa;
+  if (kind === "regular" && data.regulars.length) sel.value = data.regulars[0].vpa;
+  if (kind === "suspicious" && data.suspicious.length) sel.value = data.suspicious[0].vpa;
+  if (kind === "lost" && data.lost.length) sel.value = data.lost[0].vpa;
+  loadProfile();
+  document.getElementById("amount").value = amount;
+  setMode("P2M");
+}
+
+async function pay() {
+  const amount = parseFloat(document.getElementById("amount").value);
+  const err = document.getElementById("err");
+  if (!amount || amount <= 0) { err.textContent = "Enter an amount first"; return; }
+  err.textContent = "";
+  const res = document.getElementById("result");
+  clearTimeout(resultTimer);
+  res.textContent = "Paying…"; res.className = "text-center text-sm text-slate-500";
+  try {
+    const r = await fetch("/api/payments", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        payer_vpa: document.getElementById("payer").value || null, amount, mode,
+        note: document.getElementById("note").value }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || r.status);
+    res.innerHTML = `✓ ₹${amount.toLocaleString("en-IN")} paid successfully` + (d.cashback
+      ? `<span class="block mt-2 bg-emerald-50 text-emerald-700 rounded-lg p-2">🎉 ₹${d.cashback.amount.toLocaleString("en-IN")} cashback from Ramesh Kirana Store credited to you (${d.cashback.pct}% offer applied)</span>` : "");
+    res.className = "text-center text-sm text-emerald-600 font-semibold";
+    loadProfile();
+  } catch (e) {
+    res.textContent = "Payment failed: " + e.message; res.className = "text-center text-sm text-red-600";
+  }
+  resultTimer = setTimeout(() => { res.innerHTML = ""; }, 5000);   // clear the message after 5 seconds
+}
+
+// ---------- opt-in + offers inbox ----------
+async function loadProfile() {
+  const vpa = document.getElementById("payer").value;
+  const box = document.getElementById("profile");
+  if (!vpa) { box.classList.add("hidden"); profile = null; return; }
+  profile = await (await fetch("/api/customer/profile?vpa=" + encodeURIComponent(vpa))).json();
+  box.classList.remove("hidden");
+  document.getElementById("custId").textContent = profile.customer_id || "";
+  document.getElementById("optin").checked = !!profile.opted_in;
+  const now = new Date().toISOString().slice(0, 19);
+  document.getElementById("inbox").innerHTML = profile.offers.map(o => {
+    const till = o.valid_until ? new Date(o.valid_until).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : "";
+    const status = o.status === "redeemed"
+      ? `<span class="text-emerald-700 font-semibold">Used ✓ · paid ₹${Number(o.paid_amount).toLocaleString("en-IN")}, ₹${Number(o.cashback_amount).toLocaleString("en-IN")} cashback credited</span>`
+      : (o.valid_until && o.valid_until < now) ? `<span class="text-slate-400">Expired</span>`
+      : `<span class="text-sky-700 font-semibold">Active · applies automatically on your next payment here</span>`;
+    return `<li class="bg-sky-50 rounded-xl p-3">
+      <p>${esc(o.message)}</p>
+      <p class="text-[11px] text-slate-500 mt-1">Terms: ${o.cashback_pct}% cashback up to ₹${o.max_cashback} · valid till ${till}</p>
+      <p class="text-[11px] mt-1">${status}</p>
+    </li>`;
+  }).join("") || `<li class="text-slate-400 text-xs">No offers yet.</li>`;
+}
+
+async function setOptIn(on) {
+  const vpa = document.getElementById("payer").value;
+  await fetch("/api/customers/optin", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ vpa, opted_in: on }) });
+}
+
+function connect() {
+  const ws = MUNSHI.ws("customer");
+  ws.onclose = () => setTimeout(connect, 2000);
+  ws.onmessage = e => {
+    const m = JSON.parse(e.data);
+    if ((m.type === "offer" || m.type === "cashback") && profile && m.customer_id === profile.customer_id) loadProfile();
+  };
+}
+
+document.getElementById("payer").addEventListener("change", loadProfile);
+document.getElementById("amount").addEventListener("input", () => document.getElementById("err").textContent = "");
+setMode("P2M");
+loadPayers().then(loadProfile);
+connect();
+</script>
+</body>
+</html>

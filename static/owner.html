@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="/static/auth.js" data-role="owner"></script>
+<title>Munshi AI · Owner</title>
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
+<style>
+  .tab { white-space: nowrap; }
+  .tab.active { border-color: #00B9F1; color: #ffffff; font-weight: 600; }
+  .toast { animation: slide .3s ease-out; }
+  @keyframes slide { from { transform: translateY(-20px); opacity: 0; } }
+</style>
+</head>
+<body class="bg-slate-100 min-h-screen font-sans">
+<div class="max-w-md mx-auto bg-slate-50 min-h-screen shadow-xl relative">
+
+  <!-- header -->
+  <header class="bg-[#002E6E] text-white px-5 pt-5 pb-3 sticky top-0 z-20">
+    <div class="flex items-center justify-between">
+      <div>
+        <p class="text-sky-300 text-xs">Munshi AI</p>
+        <p id="shopName" class="text-lg font-semibold">Ramesh Kirana Store</p>
+      </div>
+      <span id="conn" class="w-3 h-3 rounded-full bg-slate-500" title="live connection"></span>
+    </div>
+    <nav class="flex gap-1 mt-3 text-sm overflow-x-auto">
+      <button data-tab="home" class="tab active border-b-2 border-transparent px-2 py-1 text-sky-100">Home</button>
+      <button data-tab="suraksha" class="tab border-b-2 border-transparent px-2 py-1 text-sky-100">Suraksha</button>
+      <button data-tab="galla" class="tab border-b-2 border-transparent px-2 py-1 text-sky-100">Galla Check</button>
+      <button data-tab="tax" class="tab border-b-2 border-transparent px-2 py-1 text-sky-100">Tax Kavach</button>
+      <button data-tab="wapsi" class="tab border-b-2 border-transparent px-2 py-1 text-sky-100">Wapsi</button>
+    </nav>
+  </header>
+
+  <div id="toasts" class="absolute top-28 left-4 right-4 z-30 space-y-2"></div>
+
+  <main class="p-4 space-y-4">
+    <!-- HOME -->
+    <section id="tab-home" class="space-y-4">
+      <div class="grid grid-cols-2 gap-3">
+        <div class="bg-white rounded-2xl p-4 shadow-sm">
+          <p class="text-xs text-slate-500">Sales on <span id="refDate"></span></p>
+          <p id="lastDay" class="text-2xl font-bold text-slate-800">—</p>
+          <p id="lastDayN" class="text-xs text-slate-400"></p>
+        </div>
+        <div class="bg-white rounded-2xl p-4 shadow-sm">
+          <p class="text-xs text-slate-500">Today's sales (live)</p>
+          <p id="today" class="text-2xl font-bold text-slate-800">—</p>
+          <p id="todayN" class="text-xs text-slate-400"></p>
+        </div>
+      </div>
+      <div class="bg-white rounded-2xl p-4 shadow-sm">
+        <p class="text-sm font-semibold text-slate-700 mb-2">Today's payments</p>
+        <ul id="todayList" class="divide-y text-sm"></ul>
+      </div>
+      <div class="bg-white rounded-2xl p-4 shadow-sm">
+        <p class="text-sm font-semibold text-slate-700 mb-2">Last 14 days</p>
+        <canvas id="salesChart" height="140"></canvas>
+      </div>
+      <div class="flex items-center justify-between">
+        <p class="text-sm font-semibold text-slate-700">Alerts</p>
+        <button onclick="runNightly(this)" class="text-xs bg-sky-500 hover:bg-sky-600 text-white px-3 py-1.5 rounded-full">Run nightly check</button>
+      </div>
+      <p id="lastNightly" class="text-xs text-slate-400 -mt-3"></p>
+      <ul id="alertFeed" class="space-y-2"></ul>
+    </section>
+
+    <!-- SURAKSHA -->
+    <section id="tab-suraksha" class="space-y-3 hidden">
+      <div class="bg-white rounded-2xl p-4 shadow-sm">
+        <p class="font-semibold text-slate-800">Suraksha · payment shield</p>
+        <p class="text-sm text-slate-500">Risky payments are flagged on the Soundbox before goods or cash leave the counter.</p>
+        <button onclick="toggleFreeze()" class="mt-3 w-full bg-red-600 hover:bg-red-700 text-white rounded-xl py-2 text-sm font-semibold">Account frozen? Get help</button>
+      </div>
+      <div id="freezeBox" class="hidden bg-white rounded-2xl p-4 shadow-sm space-y-2 text-sm">
+        <p class="font-semibold text-slate-800">Account freeze help</p>
+        <p class="text-xs text-slate-500">Munshi collects the proof and drafts a letter asking the bank to hold only the disputed amount.</p>
+        <label class="block text-xs text-slate-500">Bank name<input id="fzBank" class="w-full border rounded-lg p-2 mt-1" value="State Bank of India"></label>
+        <div class="grid grid-cols-2 gap-2">
+          <label class="block text-xs text-slate-500">Account last 4 digits<input id="fzLast4" maxlength="4" class="w-full border rounded-lg p-2 mt-1" value="4821"></label>
+          <label class="block text-xs text-slate-500">Frozen on<input id="fzDate" type="date" class="w-full border rounded-lg p-2 mt-1"></label>
+        </div>
+        <label class="block text-xs text-slate-500">Which payment caused it?<select id="fzPayment" class="w-full border rounded-lg p-2 mt-1"></select></label>
+        <label class="block text-xs text-slate-500">Or disputed amount (₹)<input id="fzAmount" type="number" class="w-full border rounded-lg p-2 mt-1" placeholder="only if payment not listed"></label>
+        <label class="block text-xs text-slate-500">Bank / cyber cell reference (optional)<input id="fzRef" class="w-full border rounded-lg p-2 mt-1"></label>
+        <label class="block text-xs text-slate-500">What did you give against this payment?<input id="fzGoods" class="w-full border rounded-lg p-2 mt-1" value="Nothing handed over; payment held at the counter"></label>
+        <p id="fzErr" class="text-xs text-red-600"></p>
+        <button id="fzBtn" onclick="makeLetter()" class="w-full bg-[#002E6E] text-white rounded-lg py-2">Prepare evidence and letter</button>
+        <div id="fzOut" class="hidden space-y-2">
+          <p class="font-semibold text-slate-700">Evidence pack</p>
+          <ul id="fzEvidence" class="text-xs text-slate-600 space-y-1 bg-slate-50 rounded-lg p-3"></ul>
+          <p class="font-semibold text-slate-700">Draft letter <span id="fzSource" class="text-[11px] text-slate-400 font-normal"></span></p>
+          <pre id="fzLetter" class="whitespace-pre-wrap text-xs bg-slate-50 rounded-lg p-3 max-h-80 overflow-y-auto font-sans"></pre>
+          <div class="grid grid-cols-2 gap-2">
+            <button onclick="copyLetter()" class="border rounded-lg py-2 text-xs">Copy letter</button>
+            <button onclick="downloadLetter()" class="border rounded-lg py-2 text-xs">Download .txt</button>
+          </div>
+          <p class="text-[11px] text-slate-400">This is a draft to help you. It is not legal advice; check it before sending.</p>
+        </div>
+      </div>
+      <ul id="riskyList" class="space-y-2"></ul>
+    </section>
+
+    <!-- GALLA -->
+    <section id="tab-galla" class="space-y-3 hidden">
+      <div id="gallaBanner"></div>
+      <div id="shiftCards" class="grid grid-cols-2 gap-3"></div>
+      <div class="bg-white rounded-2xl p-4 shadow-sm">
+        <div class="flex items-center justify-between mb-2">
+          <p class="text-sm font-semibold text-slate-700">Expected vs actual</p>
+          <select id="shiftSelect" class="text-xs border rounded p-1"></select>
+        </div>
+        <canvas id="gallaChart" height="160"></canvas>
+      </div>
+      <div id="leakHidden"></div>
+      <div class="bg-white rounded-2xl p-4 shadow-sm space-y-2">
+        <p class="text-sm font-semibold text-slate-700">Check a QR in your shop</p>
+        <p class="text-xs text-slate-500">Paste the text from a scanned QR (it starts with upi://)</p>
+        <input id="qrText" class="w-full border rounded-lg p-2 text-sm" placeholder="upi://pay?pa=...">
+        <button onclick="checkQR()" class="w-full bg-[#002E6E] text-white rounded-lg py-2 text-sm">Check QR</button>
+        <p id="qrResult" class="text-sm"></p>
+      </div>
+    </section>
+
+    <!-- TAX -->
+    <section id="tab-tax" class="space-y-3 hidden">
+      <div class="bg-white rounded-2xl p-4 shadow-sm">
+        <p class="text-xs text-slate-500">Real shop sales this year (from <span id="fyStart"></span>)</p>
+        <p class="text-2xl font-bold text-slate-800"><span id="taxSales">—</span>
+          <span class="text-sm text-slate-400 font-normal">of <span id="taxLimit"></span> GST limit</span></p>
+        <div class="relative h-4 bg-slate-100 rounded-full mt-3 overflow-hidden">
+          <div id="taxBar" class="h-full rounded-full transition-all"></div>
+          <div class="absolute top-0 h-full w-px bg-slate-400" style="left:70%"></div>
+          <div class="absolute top-0 h-full w-px bg-slate-400" style="left:85%"></div>
+          <div class="absolute top-0 h-full w-px bg-slate-400" style="left:95%"></div>
+        </div>
+        <div class="flex justify-between text-[10px] text-slate-400 mt-1"><span>0%</span><span>70 · 85 · 95%</span></div>
+        <p id="taxProjection" class="text-sm text-slate-600 mt-3"></p>
+        <p id="taxUpdated" class="text-[11px] text-slate-400 mt-1"></p>
+      </div>
+      <div class="grid grid-cols-3 gap-2 text-center">
+        <div class="bg-white rounded-xl p-3 shadow-sm"><p class="text-[11px] text-slate-500">Raw UPI received</p><p id="taxRaw" class="font-semibold text-red-600"></p></div>
+        <div class="bg-white rounded-xl p-3 shadow-sm"><p class="text-[11px] text-slate-500">Personal money</p><p id="taxPersonal" class="font-semibold text-slate-700"></p></div>
+        <div class="bg-white rounded-xl p-3 shadow-sm"><p class="text-[11px] text-slate-500">Real sales</p><p id="taxSales2" class="font-semibold text-emerald-600"></p></div>
+      </div>
+      <p id="taxRawNote" class="text-xs text-slate-500"></p>
+      <div id="taxQuestions"></div>
+      <div class="bg-white rounded-2xl p-4 shadow-sm">
+        <p class="text-sm font-semibold text-slate-700 mb-2">Personal money Munshi separated</p>
+        <ul id="taxPersonalList" class="text-sm divide-y"></ul>
+      </div>
+    </section>
+
+    <!-- WAPSI -->
+    <section id="tab-wapsi" class="space-y-3 hidden">
+      <div id="wapsiSummary" class="bg-white rounded-2xl p-4 shadow-sm"></div>
+      <ul id="wapsiList" class="space-y-2"></ul>
+    </section>
+  </main>
+</div>
+
+<script>
+const rupee = n => "₹" + Math.round(Number(n || 0)).toLocaleString("en-IN");
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const api = async (url, opts = {}) => {
+  const r = await fetch(url, { headers: { "Content-Type": "application/json" }, ...opts });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.detail || r.status);
+  return d;
+};
+const charts = {};
+const MODULE_STYLE = {
+  suraksha: { label: "Suraksha", color: "bg-red-100 text-red-700" },
+  galla: { label: "Galla Check", color: "bg-indigo-100 text-indigo-700" },
+  tax: { label: "Tax Kavach", color: "bg-amber-100 text-amber-700" },
+  wapsi: { label: "Wapsi", color: "bg-sky-100 text-sky-700" },
+};
+
+function toast(text, tone = "red") {
+  const el = document.createElement("div");
+  el.className = `toast rounded-xl shadow-lg p-3 text-sm text-white ${tone === "red" ? "bg-red-600" : tone === "amber" ? "bg-amber-500" : tone === "green" ? "bg-emerald-600" : "bg-slate-800"}`;
+  el.textContent = text;
+  document.getElementById("toasts").appendChild(el);
+  setTimeout(() => el.remove(), 5000);
+}
+
+// ---------- tabs ----------
+const loaders = { home: loadHome, suraksha: loadSuraksha, galla: loadGalla, tax: loadTax, wapsi: loadWapsi };
+let currentTab = "home";
+document.querySelectorAll(".tab").forEach(b => b.onclick = () => showTab(b.dataset.tab));
+function showTab(name) {
+  currentTab = name;
+  document.querySelectorAll(".tab").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
+  document.querySelectorAll("main > section").forEach(s => s.classList.toggle("hidden", s.id !== "tab-" + name));
+  loaders[name]();
+}
+
+function drawChart(id, config) {
+  if (charts[id]) charts[id].destroy();
+  charts[id] = new Chart(document.getElementById(id), config);
+}
+
+// ---------- HOME ----------
+async function loadHome() {
+  const h = await api("/api/owner/home");
+  document.getElementById("shopName").textContent = h.shop;
+  document.getElementById("refDate").textContent = new Date(h.ref_date).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+  document.getElementById("lastDay").textContent = rupee(h.last_day.total);
+  document.getElementById("lastDayN").textContent = `${h.last_day.n} payments`;
+  document.getElementById("today").textContent = rupee(h.today_live.total);
+  const L = h.today_live;
+  document.getElementById("todayN").innerHTML = `${L.sales_n || 0} sales` +
+    (L.personal_n ? ` · <span class="text-slate-600">${rupee(L.personal)} personal (not counted)</span>` : "") +
+    ` · ${L.flagged || 0} flagged` + (L.refunded ? ` · ${rupee(L.refunded)} refunded` : "");
+  const tag = p => {
+    if (p.owner_action === "refunded") return ["Refunded", "bg-sky-100 text-sky-700"];
+    if (p.risk_level === "hold") return ["High risk", "bg-red-100 text-red-700"];
+    if (p.risk_level === "verify") return ["Check", "bg-amber-100 text-amber-700"];
+    if (p.category === "personal") return [p.category_confidence <= 0.6 ? "Personal?" : "Personal", "bg-slate-200 text-slate-700"];
+    return ["Sale", "bg-emerald-100 text-emerald-700"];
+  };
+  document.getElementById("todayList").innerHTML = h.today_payments.map(p => {
+    const [label, cls] = tag(p);
+    const note = p.note ? ` · "${esc(p.note)}"` : "";
+    const hint = p.category === "personal" && p.category_confidence <= 0.6 ? `<p class="text-[11px] text-amber-700">Confirm in Tax Kavach</p>` : "";
+    return `<li class="py-2 flex items-center justify-between gap-2">
+      <span><b>${rupee(p.amount)}</b> <span class="text-xs text-slate-400">${p.ts.slice(11, 16)} · ${p.mode === "P2M" ? "shop QR" : "to number"}${note}</span>${hint}</span>
+      <span class="text-[11px] px-2 py-0.5 rounded-full whitespace-nowrap ${cls}">${label}</span></li>`;
+  }).join("") || `<li class="py-2 text-xs text-slate-400">No payments yet today.</li>`;
+  document.getElementById("lastNightly").textContent = h.last_nightly ? `Last check: ${h.last_nightly.replace("T", " ").slice(0, 16)}` : "Nightly check has not run yet";
+  drawChart("salesChart", {
+    type: "bar",
+    data: { labels: h.series.map(s => s.d.slice(8) + "/" + s.d.slice(5, 7)),
+            datasets: [{ data: h.series.map(s => s.total), backgroundColor: "#00B9F1", borderRadius: 4 }] },
+    options: { plugins: { legend: { display: false } }, scales: { y: { ticks: { callback: v => "₹" + v / 1000 + "k" } } } },
+  });
+  const alerts = await api("/api/alerts?limit=8");
+  document.getElementById("alertFeed").innerHTML = alerts.map(a => {
+    const m = MODULE_STYLE[a.module];
+    const fb = a.status === "useful" || a.status === "wrong"
+      ? `<span class="text-xs text-slate-400">Marked ${a.status}</span>`
+      : `<button onclick="feedback(${a.id},'useful')" class="text-xs text-emerald-600">Useful</button>
+         <button onclick="feedback(${a.id},'wrong')" class="text-xs text-slate-400">Wrong alert</button>`;
+    return `<li class="bg-white rounded-2xl p-4 shadow-sm ${a.severity === "high" ? "border-l-4 border-red-500 rounded-l-none" : ""}">
+      <div class="flex items-center justify-between">
+        <span class="text-[11px] px-2 py-0.5 rounded-full ${m.color}">${m.label}</span>
+        <span class="text-[11px] text-slate-400">${a.ts.slice(0, 10)}</span>
+      </div>
+      <p class="font-semibold text-slate-800 text-sm mt-2">${esc(a.title)}</p>
+      <p class="text-sm text-slate-600 mt-1">${esc(a.message)}</p>
+      <div class="flex gap-4 mt-2">${fb}</div>
+    </li>`;
+  }).join("") || `<li class="text-sm text-slate-400">No alerts yet.</li>`;
+}
+
+async function feedback(id, status) {
+  await api(`/api/alerts/${id}/feedback`, { method: "POST", body: JSON.stringify({ status }) });
+  loadHome();
+}
+
+async function runNightly(btn) {
+  btn.disabled = true; btn.textContent = "Checking…";
+  try {
+    const r = await api("/api/admin/nightly", { method: "POST" });
+    toast(`Nightly check done: ${r.alerts_created} new insights`, "dark");
+  } catch (e) { toast("Nightly check failed: " + e.message); }
+  btn.disabled = false; btn.textContent = "Run nightly check";
+  loadHome();
+}
+
+// ---------- SURAKSHA ----------
+async function loadSuraksha() {
+  const rows = await api("/api/payments/risky");
+  const tone = { hold: "bg-red-100 text-red-700", verify: "bg-amber-100 text-amber-700" };
+  const time = t => t ? t.replace("T", " ").slice(0, 16) : "";
+  document.getElementById("riskyList").innerHTML = rows.map(r => {
+    const done = [];
+    if (r.owner_action === "genuine") done.push(`<span class="text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full">Marked genuine · ${time(r.owner_action_ts)}</span>`);
+    if (r.owner_action === "refunded") done.push(`<span class="text-xs bg-sky-100 text-sky-700 px-2 py-1 rounded-full">Refunded to sender · ${time(r.owner_action_ts)}</span>`);
+    if (r.reported) done.push(`<span class="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full">Reported as fraud · ${time(r.reported_ts)}</span>`);
+    const btns = [];
+    if (!r.owner_action && !r.reported) btns.push(`<button onclick="ownerAct(${r.id},'genuine',this)" class="flex-1 border border-emerald-500 text-emerald-700 rounded-lg py-1.5 text-xs">Mark genuine</button>`);
+    if (r.owner_action !== "refunded" && r.owner_action !== "genuine") btns.push(`<button onclick="ownerAct(${r.id},'refund',this)" class="flex-1 border border-sky-500 text-sky-700 rounded-lg py-1.5 text-xs">Refund to sender</button>`);
+    if (!r.reported && r.owner_action !== "genuine") btns.push(`<button onclick="ownerAct(${r.id},'report',this)" class="flex-1 bg-red-600 text-white rounded-lg py-1.5 text-xs">Report fraud</button>`);
+    return `<li class="bg-white rounded-2xl p-4 shadow-sm">
+      <div class="flex items-center justify-between">
+        <span class="text-lg font-bold text-slate-800">${rupee(r.amount)}</span>
+        <span class="text-[11px] px-2 py-0.5 rounded-full ${tone[r.risk_level]}">${r.risk_level === "hold" ? "High risk" : "Verify"} · ${r.risk_score}</span>
+      </div>
+      <p class="text-xs text-slate-400">${time(r.ts)} · from ${esc(r.payer)}${r.is_live ? " · live" : ""}${r.staff_action ? " · staff: " + r.staff_action : ""}</p>
+      <ul class="mt-2 text-sm text-slate-600 space-y-0.5">${r.risk_reasons.slice(0, 3).map(x => `<li>• ${esc(x)}</li>`).join("")}</ul>
+      ${done.length ? `<div class="flex flex-wrap gap-2 mt-3">${done.join("")}</div>` : ""}
+      ${btns.length ? `<div class="flex gap-2 mt-3">${btns.join("")}</div>` : ""}
+      <p id="act-${r.id}" class="text-xs text-slate-600 mt-2"></p>
+    </li>`;
+  }).join("") || `<li class="text-sm text-slate-400">No risky payments.</li>`;
+}
+
+const ACT_CONFIRM = {
+  genuine: "Mark this payment genuine? Munshi will trust this customer next time.",
+  refund: "Refund this money to the original sender? It will be removed from your sales.",
+  report: "Report this payment as fraud? Future payments from this payer will be flagged.",
+};
+async function ownerAct(id, action, btn) {
+  if (!confirm(ACT_CONFIRM[action])) return;
+  btn.disabled = true;
+  try {
+    const r = await api(`/api/payments/${id}/owner-action`, { method: "POST", body: JSON.stringify({ action }) });
+    await loadSuraksha();
+    const el = document.getElementById("act-" + id);
+    if (el) el.textContent = r.message;
+    toast(r.message, action === "report" ? "red" : action === "genuine" ? "green" : "dark");
+  } catch (e) { btn.disabled = false; toast(e.message); }
+}
+
+// ---------- FREEZE HELP ----------
+async function toggleFreeze() {
+  const box = document.getElementById("freezeBox");
+  box.classList.toggle("hidden");
+  if (box.classList.contains("hidden")) return;
+  document.getElementById("fzDate").value = new Date().toISOString().slice(0, 10);
+  const rows = await api("/api/payments/risky");
+  document.getElementById("fzPayment").innerHTML = `<option value="">Not sure / not listed</option>` +
+    rows.map(r => `<option value="${r.id}">${rupee(r.amount)} · ${r.ts.replace("T", " ").slice(0, 16)} · ${r.risk_level}</option>`).join("");
+}
+
+async function makeLetter() {
+  const v = id => document.getElementById(id).value.trim();
+  const err = document.getElementById("fzErr");
+  if (!v("fzBank")) { err.textContent = "Enter your bank name"; return; }
+  if (!v("fzPayment") && !v("fzAmount")) { err.textContent = "Choose the payment or enter the disputed amount"; return; }
+  err.textContent = "";
+  const btn = document.getElementById("fzBtn");
+  btn.disabled = true; btn.textContent = "Preparing…";
+  try {
+    const r = await api("/api/freeze", { method: "POST", body: JSON.stringify({
+      bank_name: v("fzBank"), account_last4: v("fzLast4"), frozen_on: v("fzDate"),
+      payment_id: v("fzPayment") ? Number(v("fzPayment")) : null,
+      disputed_amount: v("fzAmount") ? Number(v("fzAmount")) : null,
+      complaint_ref: v("fzRef"), goods_sold: v("fzGoods") }) });
+    document.getElementById("fzEvidence").innerHTML = r.evidence.map(e => `<li>• ${esc(e)}</li>`).join("");
+    document.getElementById("fzLetter").textContent = r.letter;
+    document.getElementById("fzSource").textContent = r.source === "template" ? "(standard template)" : "(written by Sarvam AI)";
+    document.getElementById("fzOut").classList.remove("hidden");
+  } catch (e) { err.textContent = e.message; }
+  btn.disabled = false; btn.textContent = "Prepare evidence and letter";
+}
+
+function copyLetter() {
+  navigator.clipboard.writeText(document.getElementById("fzLetter").textContent);
+  toast("Letter copied", "dark");
+}
+
+function downloadLetter() {
+  const blob = new Blob([document.getElementById("fzLetter").textContent], { type: "text/plain" });
+  const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: "account-freeze-letter.txt" });
+  a.click();
+}
+
+// ---------- GALLA ----------
+let gallaData = null;
+async function loadGalla() {
+  try { gallaData = await api("/api/insights/galla"); }
+  catch { document.getElementById("gallaBanner").innerHTML = `<p class="text-sm text-slate-500">Run the nightly check on Home first.</p>`; return; }
+  const f = gallaData.flagged;
+  document.getElementById("gallaBanner").innerHTML = f ? `
+    <div class="bg-red-600 text-white rounded-2xl p-4 shadow">
+      <p class="text-xs uppercase tracking-wide text-red-100">Money leak detected</p>
+      <p class="text-lg font-semibold mt-1">${f.shift} shift (${f.hours}) is ${f.drop_pct}% below normal</p>
+      <p class="text-sm text-red-100 mt-1">Since ${f.since} · about <b>${rupee(f.estimated_loss)}</b> missing over ${f.days} days.
+        QR payments fell ${f.count_drop_pct}% while bill size stayed normal, and other shifts are fine.</p>
+      <p class="text-sm mt-2">Staff on this shift: <b>${esc(f.staff)}</b>. Check every QR in the shop.</p>
+    </div>` : `<div class="bg-emerald-600 text-white rounded-2xl p-4">All shifts look normal.</div>`;
+  const names = Object.keys(gallaData.shifts);
+  document.getElementById("shiftCards").innerHTML = names.map(n => {
+    const s = gallaData.shifts[n], bad = f && f.shift === n;
+    return `<div class="bg-white rounded-2xl p-3 shadow-sm">
+      <p class="text-sm font-semibold">${n} <span class="text-xs text-slate-400">${s.hours}</span></p>
+      <p class="text-xs text-slate-500">Staff: ${esc(s.staff)}</p>
+      <p class="text-xl font-bold ${bad ? "text-red-600" : "text-emerald-600"}">${Math.round(s.median_ratio_last7 * 100)}%</p>
+      <p class="text-[11px] text-slate-400">of expected, last 7 days</p></div>`;
+  }).join("");
+  const sel = document.getElementById("shiftSelect");
+  sel.innerHTML = names.map(n => `<option ${f && f.shift === n ? "selected" : ""}>${n}</option>`).join("");
+  sel.onchange = () => drawGalla(sel.value);
+  drawGalla(sel.value);
+  try {
+    const w = await api("/api/insights/wapsi");
+    document.getElementById("leakHidden").innerHTML = (w.leak_hidden || []).length ? `
+      <div class="bg-indigo-50 border border-indigo-200 rounded-2xl p-4 text-sm text-indigo-900">
+        <b>${w.leak_hidden.length} regular customers</b> who usually shop in this shift stopped showing up in your payments
+        after the leak began. They are probably still coming, but paying into a different QR.</div>` : "";
+  } catch { }
+}
+
+function drawGalla(shift) {
+  const d = gallaData.shifts[shift].daily;
+  drawChart("gallaChart", {
+    type: "line",
+    data: { labels: d.map(x => x.date.slice(8) + "/" + x.date.slice(5, 7)), datasets: [
+      { label: "Expected", data: d.map(x => x.expected), borderColor: "#94a3b8", borderDash: [5, 4], pointRadius: 0, tension: .3 },
+      { label: "Actual", data: d.map(x => x.actual), borderColor: "#002E6E", backgroundColor: "#002E6E", tension: .3 },
+    ] },
+    options: { scales: { y: { ticks: { callback: v => "₹" + v / 1000 + "k" } } } },
+  });
+}
+
+async function checkQR() {
+  const text = document.getElementById("qrText").value.trim();
+  const out = document.getElementById("qrResult");
+  if (!text) { out.textContent = "Paste the QR text first"; out.className = "text-sm text-red-600"; return; }
+  const r = await api("/api/qr/verify", { method: "POST", body: JSON.stringify({ qr_text: text }) });
+  out.textContent = r.message;
+  out.className = "text-sm font-semibold " + (r.safe ? "text-emerald-600" : "text-red-600");
+}
+
+// ---------- TAX ----------
+async function loadTax() {
+  let t;
+  try { t = await api("/api/insights/tax"); }
+  catch { document.getElementById("taxProjection").textContent = "Run the nightly check on Home first."; return; }
+  renderTax(t);
+}
+
+function renderTax(t) {
+  const pct = Math.min(100, t.pct_of_limit);
+  const color = pct >= 95 ? "bg-red-500" : pct >= 85 ? "bg-orange-500" : pct >= 70 ? "bg-amber-400" : "bg-emerald-500";
+  document.getElementById("fyStart").textContent = t.fy_start;
+  document.getElementById("taxSales").textContent = rupee(t.business_sales);
+  document.getElementById("taxSales2").textContent = rupee(t.business_sales);
+  document.getElementById("taxLimit").textContent = rupee(t.limit);
+  document.getElementById("taxBar").className = "h-full rounded-full transition-all " + color;
+  document.getElementById("taxBar").style.width = pct + "%";
+  document.getElementById("taxProjection").innerHTML = `You are at <b>${t.pct_of_limit}%</b> of the limit. ` +
+    (t.cross_date ? `At this pace you will cross it around <b>${t.cross_date}</b>. Plan your GST registration before then.` :
+                    `Projected year-end sales: ${rupee(t.projected_year_end)}.`);
+  document.getElementById("taxUpdated").textContent = t.updated_at ? "Updated " + t.updated_at.replace("T", " ").slice(0, 16) + " · includes today's payments" : "";
+  document.getElementById("taxRaw").textContent = rupee(t.raw_upi_total);
+  document.getElementById("taxPersonal").textContent = rupee(t.personal);
+  document.getElementById("taxRawNote").textContent = t.raw_looks_over_limit
+    ? "A tax officer looking only at your raw UPI total would think you already crossed the limit. Munshi keeps proof of what is personal."
+    : "";
+  document.getElementById("taxQuestions").innerHTML = t.questions.length ? `
+    <div class="bg-amber-50 border border-amber-200 rounded-2xl p-4">
+      <p class="text-sm font-semibold text-amber-900 mb-2">Help Munshi learn: is this money business or personal?</p>
+      <ul class="space-y-2">${t.questions.map(q => `
+        <li class="bg-white rounded-xl p-3 text-sm">
+          <p><b>${esc(q.payer)}</b> sent ${rupee(q.total)} in ${q.count} payment${q.count > 1 ? "s" : ""}</p>
+          ${q.reason ? `<p class="text-xs text-slate-500">${esc(q.reason)}</p>` : ""}
+          <div class="flex gap-2 mt-2">
+            <button onclick="label('${esc(q.vpa)}','sale')" class="flex-1 bg-emerald-500 text-white rounded-lg py-1.5 text-xs">Business</button>
+            <button onclick="label('${esc(q.vpa)}','personal')" class="flex-1 bg-slate-600 text-white rounded-lg py-1.5 text-xs">Personal</button>
+          </div></li>`).join("")}</ul></div>` : "";
+  document.getElementById("taxPersonalList").innerHTML = t.personal_sources.map(p => `
+    <li class="py-2 flex justify-between gap-2">
+      <span><b>${esc(p.payer)}</b><br><span class="text-xs text-slate-500">${esc(p.reason)} · ${p.count} payments</span></span>
+      <span class="font-semibold">${rupee(p.total)}</span></li>`).join("");
+}
+
+async function label(vpa, category) {
+  const t = await api("/api/tax/label", { method: "POST", body: JSON.stringify({ vpa, category }) });
+  toast("Saved. Munshi will remember this person.", "dark");
+  renderTax(t);
+}
+
+// ---------- WAPSI ----------
+async function loadWapsi() {
+  let w;
+  try { w = await api("/api/insights/wapsi"); }
+  catch { document.getElementById("wapsiSummary").textContent = "Run the nightly check on Home first."; return; }
+  const offers = await api("/api/offers");
+  const latest = {};
+  offers.forEach(o => { if (!latest[o.customer_id]) latest[o.customer_id] = o; });   // newest first
+  document.getElementById("wapsiSummary").innerHTML = `
+    <p class="font-semibold text-slate-800">${w.lost.length} regular customers stopped coming</p>
+    <p class="text-sm text-slate-500">Out of ${w.regulars} regulars. Together they spent about <b>${rupee(w.monthly_value_at_risk)}</b> a month.
+      You only see a customer number; Munshi sends offers through Paytm to customers who agreed to receive them.</p>`;
+  document.getElementById("wapsiList").innerHTML = w.lost.map(c => {
+    const of = latest[c.customer_id];
+    const till = of && of.valid_until ? new Date(of.valid_until).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : "";
+    const btn = of && of.status === "redeemed"
+      ? `<span class="text-xs bg-emerald-100 text-emerald-700 font-semibold px-2 py-1 rounded-full">Came back after your offer ✓</span>
+         ${of.paid_amount ? `<p class="text-xs text-slate-500 mt-1">Paid ${rupee(of.paid_amount)} · cashback ${rupee(of.cashback_amount)} · you keep ${rupee(of.paid_amount - of.cashback_amount)}</p>` : ""}`
+      : of
+      ? `<span class="text-xs text-emerald-600 font-semibold">Offer sent ✓ · ${of.cashback_pct}% cashback up to ${rupee(of.max_cashback)} till ${till}</span>`
+      : c.opted_in
+        ? `<button onclick="sendOffer('${c.customer_id}', this)" class="text-xs bg-sky-500 hover:bg-sky-600 text-white px-3 py-1.5 rounded-full">Send offer</button>`
+        : `<span class="text-xs text-slate-400">Has not agreed to offers</span>`;
+    return `<li class="bg-white rounded-2xl p-4 shadow-sm">
+      <div class="flex items-center justify-between"><span class="font-semibold">${c.customer_id}</span>
+        <span class="text-sm font-semibold text-slate-700">${rupee(c.monthly_value)}/month</span></div>
+      <p class="text-xs text-slate-500 mt-1">Came every ~${c.usual_gap_days} days · last visit ${c.last_visit} (${c.days_since} days ago) · avg bill ${rupee(c.avg_bill)}</p>
+      <div class="mt-2">${btn}</div>
+      <p id="offer-${c.customer_id}" class="text-sm text-slate-600 italic mt-2"></p>
+    </li>`;
+  }).join("");
+}
+
+async function sendOffer(id, btn) {
+  btn.disabled = true; btn.textContent = "Writing offer…";
+  try {
+    const r = await api(`/api/wapsi/${id}/offer`, { method: "POST" });
+    document.getElementById("offer-" + id).textContent = "“" + r.message + "”";
+    btn.outerHTML = `<span class="text-xs text-emerald-600 font-semibold">Offer sent ✓</span>`;
+  } catch (e) { btn.disabled = false; btn.textContent = "Send offer"; toast(e.message); }
+}
+
+// ---------- live updates ----------
+function connect() {
+  const ws = MUNSHI.ws("owner");
+  const dot = document.getElementById("conn");
+  ws.onopen = () => dot.className = "w-3 h-3 rounded-full bg-emerald-400";
+  ws.onclose = () => { dot.className = "w-3 h-3 rounded-full bg-red-500"; setTimeout(connect, 2000); };
+  ws.onmessage = e => {
+    const m = JSON.parse(e.data);
+    if (m.type === "payment" && m.level !== "safe") {
+      toast(`${m.level === "hold" ? "High-risk" : "Check this"} payment of ${rupee(m.amount)}: ${m.reasons[0]}`, m.level === "hold" ? "red" : "amber");
+    }
+    if (m.type === "staff_action") toast(`Staff marked payment as ${m.action}`, "dark");
+    if (m.type === "classified") toast(`${rupee(m.amount)} recorded as personal money, not sales (${m.reason})`, "dark");
+    if (m.type === "tax_updated" && currentTab === "tax") loadTax();
+    if (m.type === "tax_updated" && currentTab === "home") loadHome();
+    if (m.type === "offer_redeemed") toast(`Customer ${m.customer_id} came back after your offer! Paid ${rupee(m.paid)}, cashback ${rupee(m.amount)}, you keep ${rupee(m.net)}.`, "green");
+    if (["payment", "staff_action", "nightly_done", "offer_redeemed"].includes(m.type) && currentTab !== "suraksha") loaders[currentTab]();
+    if (currentTab === "suraksha" && m.type !== "offer_redeemed" && document.getElementById("freezeBox").classList.contains("hidden")) loadSuraksha();
+  };
+}
+connect();
+loadHome();
+</script>
+</body>
+</html>
